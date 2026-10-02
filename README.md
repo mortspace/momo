@@ -9,6 +9,8 @@
 
 A little 3D friend for your AI chats. It dresses for whatever you ask.
 
+**Try it live at [feralui.dev/momo](https://feralui.dev/momo).** The live demo runs without keys, on the local rules and written replies.
+
 Ask for a recipe and Momo puts on a chef's hat. Paste an error and out comes the monocle. Lose the connection and it plays dead until you're back.
 
 - **16 outfits.** Each one has its own prop, colour and face, picked from what you ask.
