@@ -1,0 +1,5 @@
+dist
+mesh
+out
+src/vendor
+package-lock.json

@@ -1,0 +1,140 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Momo parity</title>
+    <style>
+      body {
+        margin: 0;
+        background: #fff;
+        font: 12px system-ui;
+        color: #555;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 6px;
+      }
+      .row div {
+        width: 150px;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="out"></div>
+    <script type="module">
+      import { LOOK_PALETTE, SIGNATURE } from '../src/looks.js'
+      import { OUTFITS } from '../src/engine/character.js'
+
+      const params = new URLSearchParams(location.search)
+      const reference = (
+        await import(params.get('a') || '../src/engine/raymarch.js')
+      ).createRenderer({ base: '..' })
+      const candidate = (await import(params.get('b') || '../src/engine/mesh.js')).createRenderer({
+        base: '..',
+      })
+      const size = +(params.get('px') || 320)
+      const looks = (params.get('looks') || 'rest').split(',')
+      const poses = (params.get('poses') || 'plain').split(',')
+      const small = +(params.get('small') || 0)
+
+      const POSES = {
+        plain: {},
+        listen: { tip: [0.14, 0.06, 1] },
+        think: { tip: [-0.16, 0.18, 0.97], look: [-0.04, 0.05] },
+        idea: { tip: [-0.25, 0, 1.06], lift: 0.06, face: 7, glow: 1 },
+        surprised: { tip: [-0.25, 0, 1.1], face: 5, squash: -0.55 },
+        wink: { face: 8, roll: 0.09 },
+        happy: { face: 1 },
+        sleepy: { face: 9, tip: [0.32, 0.14, 0.95] },
+        sorry: { face: 10 },
+        dizzy: { face: 6, roll: 0.1 },
+        blink: { blink: 0.6 },
+        yaw: { yaw: 0.9 },
+        back: { yaw: 3.0 },
+        fall: { fall: 0.5 },
+        dead: { dead: 1, face: 4, fall: 1, tip: [1.2, 0.25, 0.86], palette: 'ash' },
+        peek: { dead: 1, face: 4, peek: 1, palette: 'ash' },
+      }
+
+      let facesWaited = false
+      async function ready(R, outfit) {
+        while (!R.isReady(outfit) || (R.info.facesReady === false && R.info.parallel)) {
+          await new Promise(resolve => setTimeout(resolve, 20))
+        }
+        if (R.info.facesReady === false && !R.info.parallel && !facesWaited) {
+          facesWaited = true
+          const until = performance.now() + 16000
+          while (performance.now() < until) {
+            R.isReady(outfit)
+            await new Promise(resolve => setTimeout(resolve, 50))
+          }
+        }
+      }
+
+      const stats = []
+      for (const look of looks) {
+        for (const pose of poses) {
+          const sig = SIGNATURE[look] || {}
+          const state = {
+            outfit: OUTFITS[look],
+            palette: LOOK_PALETTE[look] || 'persimmon',
+            restMouth: true,
+            browOn: 0,
+            time: 0.4,
+            look: [0.012, 0.004],
+            small,
+            ...(sig.tip ? { tip: sig.tip } : {}),
+            ...(sig.eyeScale ? { eyeScale: sig.eyeScale } : {}),
+            ...POSES[pose],
+          }
+          await ready(reference, state.outfit)
+          await ready(candidate, state.outfit)
+          const [a, b, diff] = [0, 1, 2].map(() => {
+            const canvas = document.createElement('canvas')
+            canvas.width = canvas.height = size
+            return canvas
+          })
+          reference.draw(a, size, state)
+          candidate.draw(b, size, state)
+          const da = a.getContext('2d').getImageData(0, 0, size, size).data
+          const db = b.getContext('2d').getImageData(0, 0, size, size).data
+          const ctx = diff.getContext('2d')
+          const img = ctx.createImageData(size, size)
+          let sum = 0
+          let max = 0
+          let over = 0
+          for (let i = 0; i < da.length; i += 4) {
+            let d = 0
+            for (let k = 0; k < 4; k++) d = Math.max(d, Math.abs(da[i + k] - db[i + k]))
+            sum += d
+            max = Math.max(max, d)
+            if (d > 24) over++
+            const v = Math.min(255, d * 4)
+            img.data.set([255, 255 - v, 255 - v, 255], i)
+          }
+          ctx.putImageData(img, 0, 0)
+          const s = {
+            look,
+            pose,
+            mean: +(sum / (size * size)).toFixed(3),
+            max,
+            overPct: +((100 * over) / (size * size)).toFixed(3),
+          }
+          stats.push(s)
+          const row = document.createElement('div')
+          row.className = 'row'
+          const label = document.createElement('div')
+          label.textContent = `${look} ${pose} mean ${s.mean} max ${s.max} >24: ${s.overPct}%`
+          row.append(label, a, b, diff)
+          document.getElementById('out').append(row)
+        }
+      }
+      window.parity = stats
+    </script>
+  </body>
+</html>

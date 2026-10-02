@@ -1,0 +1,414 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Momo bake</title>
+  </head>
+  <body>
+    <script type="module">
+      import { HEAD, GROUND_C, LIB, BODY, PROPS, MAP } from '../src/engine/shaders.js'
+      import { uniformsFor, setUniforms, rig } from '../src/engine/character.js'
+      import { PARTS, BODY_BOUNDS, OUTFIT_OF_VARIANT } from '../src/engine/rig.js'
+
+      const canvas = document.createElement('canvas')
+      canvas.width = canvas.height = 1
+      const gl = canvas.getContext('webgl2')
+      if (!gl.getExtension('EXT_color_buffer_float')) throw new Error('no float render targets')
+
+      const BAKE = `
+uniform highp sampler2D uPts;
+uniform highp sampler2D uNin;
+uniform int uPass, uPart, uNy, uZ0;
+uniform vec3 uLo;
+uniform float uH;
+float partD(vec3 q){
+  if (uPart == 0) return bodyD(q);
+  if (uPart == 1) return hatLocal(q);
+  if (uPart == 2) return sdTorus(q, vec2(0.182, 0.019));
+  if (uPart == 3) return sdTorus(q, vec2(0.182, 0.03));
+  if (uPart >= 4 && uPart <= 7) return pencilPart(q, 0.085, uPart - 4);
+  if (uPart == 8) return helmetLocal(q);
+  if (uPart >= 9 && uPart <= 11) return phonesPart(q, uPart - 9);
+  if (uPart == 12) return glasses(q).x;
+  if (uPart == 13) return sdEll(q, vec3(0.15, 0.05, 0.08));
+  if (uPart == 14) return sdEll(q, vec3(0.16, 0.05, 0.085));
+  if (uPart == 16) return beretLocal(q);
+  if (uPart == 17 || uPart == 18) return clapPart(q, uPart - 17);
+  if (uPart == 19) return sweatLocal(q);
+  if (uPart >= 20 && uPart <= 22) return gogPart(q, uPart - 20);
+  if (uPart == 27) return gogPart(q, 3);
+  if (uPart == 23) return snoutLocal(q);
+  if (uPart == 28) return pigEars(q);
+  if (uPart == 29) return pigCoinLocal(q);
+  if (uPart >= 24 && uPart <= 26) return setPart(q, uPart - 24);
+  if (uPart >= 30 && uPart <= 33) return skipperPart(q, uPart - 30);
+  if (uPart == 40) return skipperPart(q, 4);
+  if (uPart >= 34 && uPart <= 36) return mirrorPart(q, uPart - 34);
+  if (uPart >= 37 && uPart <= 39) return signPart(q, uPart - 37);
+  return sdCapsule(q, vec3(0.0, -0.03, 0.0), vec3(0.0, 0.06, 0.0), 0.018);
+}
+vec3 partG(vec3 q){
+  const float e = 0.0004;
+  return vec3(partD(q + vec3(e, 0.0, 0.0)) - partD(q - vec3(e, 0.0, 0.0)), partD(q + vec3(0.0, e, 0.0)) - partD(q - vec3(0.0, e, 0.0)), partD(q + vec3(0.0, 0.0, e)) - partD(q - vec3(0.0, 0.0, e)))/(2.0*e);
+}
+void main(){
+  ivec2 ij = ivec2(gl_FragCoord.xy);
+  if (uPass == 0) {
+    vec3 g = vec3(float(ij.x), float(ij.y % uNy), float(uZ0 + ij.y/uNy));
+    outColor = vec4(partD(uLo + uH*g), 0.0, 0.0, 1.0);
+    return;
+  }
+  vec3 p = texelFetch(uPts, ij, 0).xyz;
+  if (uPass == 1) { float d = partD(p); vec3 g = partG(p); outColor = vec4(p - g*d/max(dot(g, g), 1e-8), d); return; }
+  if (uPass == 2) { outColor = vec4(normalize(partG(p)), 0.0); return; }
+  vec3 n = texelFetch(uNin, ij, 0).xyz;
+  vec3 L = normalize(vec3(-0.55, 0.78, 0.6));
+  outColor = vec4(calcAO(p, n), softShadow(p + n*0.01, L), 0.0, 1.0);
+}`
+
+      const VS = '#version 300 es\nin vec2 p;\nvoid main(){ gl_Position = vec4(p, 0.0, 1.0); }'
+      const progs = {}
+      function prog(v) {
+        if (progs[v]) return progs[v]
+        const mk = (t, s) => {
+          const x = gl.createShader(t)
+          gl.shaderSource(x, s)
+          gl.compileShader(x)
+          if (!gl.getShaderParameter(x, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(x))
+          return x
+        }
+        const p = gl.createProgram()
+        gl.attachShader(p, mk(gl.VERTEX_SHADER, VS))
+        gl.attachShader(
+          p,
+          mk(
+            gl.FRAGMENT_SHADER,
+            '#version 300 es\n#define PROP ' +
+              v +
+              '\n' +
+              HEAD +
+              GROUND_C +
+              LIB +
+              BODY +
+              PROPS +
+              MAP +
+              BAKE,
+          ),
+        )
+        gl.bindAttribLocation(p, 0, 'p')
+        gl.linkProgram(p)
+        if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p))
+        const U = {}
+        const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS)
+        for (let i = 0; i < n; i++) {
+          const u = gl.getActiveUniform(p, i)
+          U[u.name] = gl.getUniformLocation(p, u.name)
+        }
+        return (progs[v] = { p, U })
+      }
+      const vao = gl.createVertexArray()
+      gl.bindVertexArray(vao)
+      const vb = gl.createBuffer()
+      gl.bindBuffer(gl.ARRAY_BUFFER, vb)
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW)
+      gl.enableVertexAttribArray(0)
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0)
+
+      function target(w, h) {
+        const tex = gl.createTexture()
+        gl.bindTexture(gl.TEXTURE_2D, tex)
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32F, w, h)
+        const fb = gl.createFramebuffer()
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb)
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0)
+        return {
+          tex,
+          fb,
+          w,
+          h,
+          free() {
+            gl.deleteFramebuffer(fb)
+            gl.deleteTexture(tex)
+          },
+        }
+      }
+      function dataTex(arr4, w, h) {
+        const tex = gl.createTexture()
+        gl.bindTexture(gl.TEXTURE_2D, tex)
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, arr4)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
+        return tex
+      }
+      function run(P, t, extra) {
+        gl.useProgram(P.p)
+        gl.bindFramebuffer(gl.FRAMEBUFFER, t.fb)
+        gl.viewport(0, 0, t.w, t.h)
+        extra()
+        gl.drawArrays(gl.TRIANGLES, 0, 3)
+        const out = new Float32Array(t.w * t.h * 4)
+        gl.readPixels(0, 0, t.w, t.h, gl.RGBA, gl.FLOAT, out)
+        return out
+      }
+
+      function evalGrid(P, part, lo, h, n) {
+        const [nx, ny, nz] = n
+        const f = new Float32Array(nx * ny * nz)
+        const slab = Math.max(1, Math.floor(8192 / ny))
+        for (let z0 = 0; z0 < nz; z0 += slab) {
+          const zc = Math.min(slab, nz - z0)
+          const t = target(nx, ny * zc)
+          const out = run(P, t, () => {
+            gl.uniform1i(P.U.uPass, 0)
+            gl.uniform1i(P.U.uPart, part)
+            gl.uniform1i(P.U.uNy, ny)
+            gl.uniform1i(P.U.uZ0, z0)
+            gl.uniform3fv(P.U.uLo, lo)
+            gl.uniform1f(P.U.uH, h)
+          })
+          for (let i = 0; i < nx * ny * zc; i++) f[z0 * nx * ny + i] = out[i * 4]
+          t.free()
+        }
+        return f
+      }
+
+      function pointPass(P, part, pass, pts, nrm) {
+        const N = pts.length / 3,
+          W = 1024,
+          H = Math.max(1, Math.ceil(N / W))
+        const a = new Float32Array(W * H * 4),
+          b = new Float32Array(W * H * 4)
+        for (let i = 0; i < N; i++) {
+          a.set(pts.subarray(i * 3, i * 3 + 3), i * 4)
+          if (nrm) b.set(nrm.subarray(i * 3, i * 3 + 3), i * 4)
+        }
+        const ta = dataTex(a, W, H),
+          tb = nrm ? dataTex(b, W, H) : null
+        const t = target(W, H)
+        const out = run(P, t, () => {
+          gl.uniform1i(P.U.uPass, pass)
+          gl.uniform1i(P.U.uPart, part)
+          gl.activeTexture(gl.TEXTURE0)
+          gl.bindTexture(gl.TEXTURE_2D, ta)
+          gl.uniform1i(P.U.uPts, 0)
+          if (tb) {
+            gl.activeTexture(gl.TEXTURE1)
+            gl.bindTexture(gl.TEXTURE_2D, tb)
+            gl.uniform1i(P.U.uNin, 1)
+          }
+        })
+        t.free()
+        gl.deleteTexture(ta)
+        if (tb) gl.deleteTexture(tb)
+        return out.subarray(0, N * 4)
+      }
+
+      function surfaceNets(f, n, lo, h) {
+        const [nx, ny, nz] = n
+        const cx = nx - 1,
+          cy = ny - 1
+        const at = (x, y, z) => f[x + nx * (y + ny * z)]
+        const vid = new Int32Array(cx * cy * (nz - 1)).fill(-1)
+        const verts = []
+        const E = [
+          [0, 1],
+          [2, 3],
+          [4, 5],
+          [6, 7],
+          [0, 2],
+          [1, 3],
+          [4, 6],
+          [5, 7],
+          [0, 4],
+          [1, 5],
+          [2, 6],
+          [3, 7],
+        ]
+        const v = new Float64Array(8)
+        for (let z = 0; z < nz - 1; z++)
+          for (let y = 0; y < ny - 1; y++)
+            for (let x = 0; x < nx - 1; x++) {
+              let mask = 0
+              for (let c = 0; c < 8; c++) {
+                v[c] = at(x + (c & 1), y + ((c >> 1) & 1), z + ((c >> 2) & 1))
+                if (v[c] < 0) mask |= 1 << c
+              }
+              if (mask === 0 || mask === 255) continue
+              let sx = 0,
+                sy = 0,
+                sz = 0,
+                k = 0
+              for (const [a, b] of E) {
+                if (v[a] < 0 === v[b] < 0) continue
+                const t = v[a] / (v[a] - v[b])
+                sx += (a & 1) + ((b & 1) - (a & 1)) * t
+                sy += ((a >> 1) & 1) + (((b >> 1) & 1) - ((a >> 1) & 1)) * t
+                sz += ((a >> 2) & 1) + (((b >> 2) & 1) - ((a >> 2) & 1)) * t
+                k++
+              }
+              vid[x + cx * (y + cy * z)] = verts.length / 3
+              verts.push(
+                lo[0] + h * (x + sx / k),
+                lo[1] + h * (y + sy / k),
+                lo[2] + h * (z + sz / k),
+              )
+            }
+        const cid = (x, y, z) => vid[x + cx * (y + cy * z)]
+        const tris = []
+        const P = i => [verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]]
+        const d2 = (i, j) => {
+          const a = P(i),
+            b = P(j)
+          return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
+        }
+        const quad = (a, b, c, d, flip) => {
+          if (a < 0 || b < 0 || c < 0 || d < 0) return
+          if (flip) {
+            const t = b
+            b = d
+            d = t
+          }
+          if (d2(a, c) <= d2(b, d)) tris.push(a, b, c, a, c, d)
+          else tris.push(a, b, d, b, c, d)
+        }
+        for (let z = 1; z < nz - 1; z++)
+          for (let y = 1; y < ny - 1; y++)
+            for (let x = 0; x < nx - 1; x++) {
+              const a = at(x, y, z),
+                b = at(x + 1, y, z)
+              if (a < 0 === b < 0) continue
+              quad(cid(x, y - 1, z - 1), cid(x, y, z - 1), cid(x, y, z), cid(x, y - 1, z), !(a < 0))
+            }
+        for (let z = 1; z < nz - 1; z++)
+          for (let y = 0; y < ny - 1; y++)
+            for (let x = 1; x < nx - 1; x++) {
+              const a = at(x, y, z),
+                b = at(x, y + 1, z)
+              if (a < 0 === b < 0) continue
+              quad(cid(x - 1, y, z - 1), cid(x - 1, y, z), cid(x, y, z), cid(x, y, z - 1), !(a < 0))
+            }
+        for (let z = 0; z < nz - 1; z++)
+          for (let y = 1; y < ny - 1; y++)
+            for (let x = 1; x < nx - 1; x++) {
+              const a = at(x, y, z),
+                b = at(x, y, z + 1)
+              if (a < 0 === b < 0) continue
+              quad(cid(x - 1, y - 1, z), cid(x, y - 1, z), cid(x, y, z), cid(x - 1, y, z), !(a < 0))
+            }
+        return { pos: new Float32Array(verts), idx: new Uint32Array(tris) }
+      }
+
+      function boundaryMin(f, n) {
+        const [nx, ny, nz] = n
+        let m = Infinity
+        for (let z = 0; z < nz; z++)
+          for (let y = 0; y < ny; y++)
+            for (let x = 0; x < nx; x++) {
+              if (x && y && z && x < nx - 1 && y < ny - 1 && z < nz - 1) continue
+              m = Math.min(m, f[x + nx * (y + ny * z)])
+            }
+        return m
+      }
+
+      function restState(v) {
+        return {
+          outfit: v ? OUTFIT_OF_VARIANT[v] : 0,
+          palette: 'persimmon',
+          tip: [0, 0, 1],
+          look: [0, 0],
+          fall: 0,
+          glassY: 0,
+          leaf: 0.5,
+        }
+      }
+
+      function meshPart(part, v, lo, hi, h) {
+        const P = prog(v)
+        gl.useProgram(P.p)
+        setUniforms(gl, P.U, uniformsFor(restState(v), 64))
+        const n = [0, 1, 2].map(i => Math.ceil((hi[i] - lo[i]) / h) + 1)
+        const f = evalGrid(P, part, lo, h, n)
+        const bmin = boundaryMin(f, n)
+        const m = surfaceNets(f, n, lo, h)
+        let resid = 0
+        for (let it = 0; it < 4; it++) {
+          const o = pointPass(P, part, 1, m.pos)
+          resid = 0
+          for (let i = 0; i < m.pos.length / 3; i++) {
+            m.pos[i * 3] = o[i * 4]
+            m.pos[i * 3 + 1] = o[i * 4 + 1]
+            m.pos[i * 3 + 2] = o[i * 4 + 2]
+            resid = Math.max(resid, Math.abs(o[i * 4 + 3]))
+          }
+        }
+        const no = pointPass(P, part, 2, m.pos)
+        const nrm = new Float32Array(m.pos.length)
+        for (let i = 0; i < nrm.length / 3; i++) {
+          nrm[i * 3] = no[i * 4]
+          nrm[i * 3 + 1] = no[i * 4 + 1]
+          nrm[i * 3 + 2] = no[i * 4 + 2]
+        }
+        return { ...m, nrm, grid: n, bmin, resid }
+      }
+
+      function glassesBounds() {
+        const r = rig().tutor
+        const xs = [r.eyeL[0], r.eyeR[0]],
+          zs = [r.eyeL[2], r.eyeR[2]]
+        return {
+          lo: [Math.min(...xs) - 0.36, r.eyeR[1] - 0.4, Math.min(...zs) - 0.66],
+          hi: [Math.max(...xs) + 0.36, r.eyeR[1] + 0.25, Math.max(...zs) + 0.22],
+        }
+      }
+
+      window.bake = function (bodyH) {
+        const t0 = performance.now()
+        const out = { parts: [], log: [] }
+        const body = meshPart(0, 0, BODY_BOUNDS.lo, BODY_BOUNDS.hi, bodyH)
+        out.parts.push({
+          name: 'body',
+          mat: 1,
+          v: -1,
+          frame: 'body',
+          pos: body.pos,
+          nrm: body.nrm,
+          idx: body.idx,
+        })
+        out.log.push({
+          name: 'body',
+          verts: body.pos.length / 3,
+          tris: body.idx.length / 3,
+          grid: body.grid,
+          bmin: body.bmin,
+          resid: body.resid,
+        })
+        for (const def of PARTS) {
+          const bb = def.frame === 'glasses' ? glassesBounds() : def
+          const m = meshPart(def.part, def.v, bb.lo, bb.hi, def.h)
+          out.parts.push({
+            name: def.name,
+            mat: def.mat,
+            v: def.v,
+            frame: def.frame,
+            small: !!def.small,
+            big: !!def.big,
+            pos: m.pos,
+            nrm: m.nrm,
+            idx: m.idx,
+          })
+          out.log.push({
+            name: def.name,
+            verts: m.pos.length / 3,
+            tris: m.idx.length / 3,
+            grid: m.grid,
+            bmin: m.bmin,
+            resid: m.resid,
+          })
+        }
+        out.ms = Math.round(performance.now() - t0)
+        return out
+      }
+      window.bakeReady = true
+    </script>
+  </body>
+</html>

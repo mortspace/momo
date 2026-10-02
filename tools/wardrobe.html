@@ -1,0 +1,115 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Momo wardrobe</title>
+    <style>
+      body {
+        margin: 0;
+        background: #fff;
+        font: 12px/16px system-ui;
+        color: #6b6b73;
+      }
+      .look {
+        display: flex;
+        align-items: flex-end;
+        gap: 20px;
+        padding: 16px 20px;
+        border-bottom: 1px solid #eee;
+      }
+      .look b {
+        width: 84px;
+        color: #111;
+        font-weight: 600;
+        align-self: center;
+      }
+      figure {
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="out"></div>
+    <script type="module">
+      import { LOOK_PALETTE, SIGNATURE } from '../src/looks.js'
+
+      const RENDERERS = {
+        mesh: '../src/engine/mesh.js',
+        canvas: '../src/engine/canvas.js',
+        ray: '../src/engine/raymarch.js',
+      }
+      const params = new URLSearchParams(location.search)
+      const { createRenderer, OUTFITS, FACE } = await import(RENDERERS[params.get('r') || 'mesh'])
+      const looks = (params.get('looks') || 'rest,builder').split(',')
+      const sizes = (params.get('sizes') || '220,92,44,20').split(',').map(Number)
+      const poses = (params.get('poses') || 'front,three').split(',')
+      const dpr = +(params.get('dsf') || devicePixelRatio || 1)
+
+      const POSE = {
+        front: () => ({}),
+        three: () => ({ yaw: 0.75 }),
+        side: () => ({ yaw: 1.4 }),
+        happy: () => ({ face: 1 }),
+        fall: () => ({ fall: 0.55 }),
+        listen: tip => ({ tip: [tip[0] + 0.14, 0.06, tip[2]] }),
+        think: tip => ({ tip: [tip[0] - 0.16, 0.18, tip[2] * 0.97], look: [-0.04, 0.05] }),
+        surprised: tip => ({ tip: [-0.25, 0, Math.max(tip[2], 1.1)], face: 5, squash: -0.55 }),
+        idea: tip => ({ tip: [-0.25, 0, Math.max(tip[2], 1.06)], face: 7, glow: 1 }),
+        dead: () => ({ dead: 1, face: 4, fall: 1, tip: [1.2, 0.25, 0.86], palette: 'ash' }),
+      }
+
+      const R = createRenderer({ base: '..' })
+      const ready = outfit =>
+        new Promise(resolve => {
+          const poll = () => (R.isReady(outfit) ? resolve() : setTimeout(poll, 30))
+          poll()
+        })
+
+      for (const look of looks) {
+        const outfit = OUTFITS[look]
+        await ready(outfit)
+        const row = document.createElement('div')
+        row.className = 'look'
+        row.innerHTML = `<b>${look}</b>`
+        const sig = SIGNATURE[look] || {}
+        const baseTip = sig.tip || [0, 0, 1]
+        for (const pose of poses) {
+          for (const css of sizes) {
+            const px = Math.round(css * dpr)
+            const canvas = document.createElement('canvas')
+            canvas.width = canvas.height = px
+            canvas.style.width = canvas.style.height = css + 'px'
+            const state = {
+              outfit,
+              face: FACE[look] ?? 0,
+              palette: LOOK_PALETTE[look] || 'persimmon',
+              restMouth: true,
+              browOn: 0,
+              small: css <= 30 ? 1 : 0,
+              ...sig,
+              ...POSE[pose](baseTip),
+            }
+            if (sig.tip && pose !== 'dead')
+              state.tip = [state.tip[0], state.tip[1], Math.min(state.tip[2], sig.tip[2])]
+            await new Promise(resolve => setTimeout(resolve, 60))
+            R.draw(canvas, px, state)
+            const figure = document.createElement('figure')
+            const caption = document.createElement('figcaption')
+            caption.textContent = `${pose} ${css}`
+            figure.append(canvas, caption)
+            row.append(figure)
+          }
+        }
+        document.getElementById('out').append(row)
+      }
+      window.done = true
+    </script>
+  </body>
+</html>
