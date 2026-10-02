@@ -172,7 +172,7 @@ function updateBrainMode() {
 }
 async function initBrain() {
   try {
-    const r = await fetch('/api/health', { cache: 'no-store' })
+    const r = await fetch('api/health', { cache: 'no-store' })
     if (r.ok) {
       const j = await r.json()
       proxy = true
@@ -205,7 +205,7 @@ async function decide(text, signal) {
   if (key) headers['X-Jev-Key'] = key
   const users = history.filter(h => h.role === 'user')
   const prev = users.length > 1 ? users[users.length - 2].text : ''
-  const r = await fetch('/api/brain', {
+  const r = await fetch('api/brain', {
     method: 'POST',
     headers,
     body: JSON.stringify({ text, prev }),
@@ -1392,7 +1392,7 @@ function askWriter(length) {
   const now = new Date().toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'long' })
   ;(async () => {
     try {
-      const r = await fetch('/api/reply', {
+      const r = await fetch('api/reply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: history.slice(-12), now, length }),
