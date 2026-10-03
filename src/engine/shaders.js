@@ -1,4 +1,22 @@
 import { SHADOW } from './character.js'
+import { ANTENNA, BUG_SPOTS, BUG_SEAM, BUG_LEG, BUG_LEGS, LEG_GROW } from './rig.js'
+
+const g3 = v =>
+  `vec3(${v
+    .slice(0, 3)
+    .map(n => n.toFixed(3))
+    .join(', ')})`
+const ANT = ANTENNA.stalk
+const ANT_STALK = ANT.slice(1)
+  .map(
+    (b, i) =>
+      `  d = min(d, sdRoundCone(c, ${g3(ANT[i])}, ${g3(b)}, ${ANT[i][3].toFixed(4)}, ${b[3].toFixed(4)}));`,
+  )
+  .join('\n')
+const LEGS = BUG_LEGS.map(
+  (L, i) =>
+    `  l = min(l, legD(p, ${g3(L.root)}, ${g3(L.x)}, ${g3(L.z)}, ${i < 3 ? 'uLegL' : 'uLegR'}.${'xyz'[i % 3]}, legGrow(${L.k.toFixed(1)})));`,
+).join('\n')
 
 export const HEAD = `precision highp float;
 out vec4 outColor;
@@ -32,6 +50,9 @@ uniform float uSmile;
 uniform float uSleepy;
 uniform float uWink;
 uniform float uDarkFloor;
+uniform float uBug;
+uniform vec3 uAnt;
+uniform vec3 uLegL, uLegR;
 
 `
 
@@ -546,6 +567,40 @@ vec2 stopSign(vec3 p){
   if (d < r.x) r = vec2(d, 54.0);
   return r*vec2(uWear.z, 1.0);
 }
+float antPart(vec3 c){
+  float d = 1e9;
+${ANT_STALK}
+  return smin(d, length(c - ${g3(ANTENNA.ball)}) - ${ANTENNA.ball[3].toFixed(3)}, 0.012);
+}
+float antD(vec3 p, int i){
+  vec3 c = p - (i == 0 ? ${g3(ANTENNA.roots[0])} : ${g3(ANTENNA.roots[1])});
+  c.xy = rot(i == 0 ? uAnt.y : uAnt.z)*c.xy;
+  float g = max(uAnt.x, 1e-3);
+  c /= g;
+  if (i == 0) c.x = -c.x;
+  return antPart(c)*g;
+}
+float legPart(vec3 c){
+  float d = smin(sdRoundCone(c, vec3(0.0), ${g3(BUG_LEG.knee)}, ${BUG_LEG.hip.toFixed(3)}, ${BUG_LEG.knee[3].toFixed(3)}), sdRoundCone(c, ${g3(BUG_LEG.knee)}, ${g3(BUG_LEG.ankle)}, ${BUG_LEG.knee[3].toFixed(3)}, ${BUG_LEG.ankle[3].toFixed(3)}), 0.015);
+  return smin(d, length(c - ${g3(BUG_LEG.foot)}) - ${BUG_LEG.foot[3].toFixed(3)}, 0.015);
+}
+float legGrow(float k){
+  float t = clamp((uBug - ${LEG_GROW.at.toFixed(3)} - k*${LEG_GROW.step.toFixed(3)})/${LEG_GROW.len.toFixed(3)}, 0.0, 1.0) - 1.0;
+  return 1.0 + 2.70158*t*t*t + 1.70158*t*t;
+}
+float legD(vec3 p, vec3 root, vec3 ax, vec3 az, float lift, float g){
+  vec3 c = p - root;
+  c = vec3(dot(c, ax), c.y, dot(c, az));
+  c.xy = rot(lift)*c.xy;
+  g = max(g, 1e-3);
+  return legPart(c/g)*g;
+}
+vec2 bugParts(vec3 p){
+  float d = min(antD(p, 0), antD(p, 1));
+  float l = 1e9;
+${LEGS}
+  return d < l ? vec2(d, 55.0) : vec2(l, 56.0);
+}
 vec3 toRigid(vec3 p) {
   p.y -= uLift;
   p.xz = rot(uYaw)*p.xz;
@@ -598,6 +653,8 @@ export const MAP = `vec2 map(vec3 wp){
   vec2 h = headMirror(fallXf(p, wp));
 #elif PROP == 16
   vec2 h = stopSign(fallXf(p, wp));
+#elif PROP == 17
+  vec2 h = bugParts(p);
 #endif
 #if PROP != 0
   if (h.x*0.72 < res.x) res = vec2(h.x*0.72, h.y);
@@ -998,6 +1055,19 @@ vec3 env(vec3 r) {
   return mix(vec3(0.62, 0.58, 0.55), vec3(1.0, 0.99, 0.97), smoothstep(-0.4, 0.8, r.y));
 }
 
+const vec4 BUG_SPOTS[${BUG_SPOTS.length}] = vec4[${BUG_SPOTS.length}](${BUG_SPOTS.map(v => `vec4(${v.map(n => n.toFixed(3)).join(', ')})`).join(', ')});
+float bugSpots(vec3 q, float aa){
+  float c = 0.0;
+  for (int i = 0; i < ${BUG_SPOTS.length}; i++) {
+    vec4 s = BUG_SPOTS[i];
+    float k = clamp((uBug - float(i)*0.07)/0.3, 0.0, 1.0) - 1.0;
+    float g = 1.0 + 2.70158*k*k*k + 1.70158*k*k;
+    c = max(c, (1.0 - smoothstep(-aa, aa, length(q - s.xyz) - s.w*g))*smoothstep(0.0, 0.12, g));
+  }
+  float seam = (1.0 - smoothstep(${BUG_SEAM.w.toFixed(3)} - aa, ${BUG_SEAM.w.toFixed(3)} + aa, abs(q.x - ${BUG_SEAM.x.toFixed(3)})))*smoothstep(${(-BUG_SEAM.front[0]).toFixed(3)}, ${(-BUG_SEAM.front[1]).toFixed(3)}, -q.z)*smoothstep(-0.7, -0.45, q.y);
+  return max(c, seam*clamp(uBug*1.6 - 0.6, 0.0, 1.0));
+}
+
 vec3 shadeWith(vec3 N, vec3 q, vec3 rd, float sh, float ao, float mat){
   vec3 V = -rd;
   vec3 L = normalize(vec3(-0.55, 0.78, 0.6));
@@ -1007,7 +1077,7 @@ vec3 shadeWith(vec3 N, vec3 q, vec3 rd, float sh, float ao, float mat){
   if (mat < 1.5) {
     if (uFuzz > 0.0) {
       vec3 g = vec3(vnoise(q*46.0), vnoise(q*46.0 + 17.3), vnoise(q*46.0 + 41.7)) - 0.5;
-      N = normalize(N + g*0.09*uFuzz);
+      N = normalize(N + g*0.09*uFuzz*(uOutfit == 18 ? 0.45 : 1.0));
     }
     Decal D = face(q);
     float wrap = clamp((dot(N, L) + 0.28)/1.28, 0.0, 1.0);
@@ -1019,6 +1089,13 @@ vec3 shadeWith(vec3 N, vec3 q, vec3 rd, float sh, float ao, float mat){
     float sheen = 0.3;
     col += mix(cLight, vec3(1.0), 0.3)*fres*sheen*(0.6 + 0.4*sh);
     col += vec3(1.0)*pow(max(dot(N, H), 0.0), 10.0)*0.05*sh;
+    if (uOutfit == 18) {
+      col += vec3(1.0, 0.93, 0.9)*pow(max(dot(N, H), 0.0), 22.0)*0.16*sh;
+      float sp = bugSpots(q, max(0.004, uPixW*0.75));
+      vec3 spot = mix(vec3(0.045, 0.04, 0.05), vec3(0.21, 0.18, 0.2), t)*mix(0.82, 1.0, ao);
+      spot += vec3(1.0)*pow(max(dot(N, H), 0.0), 30.0)*0.12*sh + cLight*fres*0.06;
+      col = mix(col, spot, sp);
+    }
     col = mix(col, vec3(1.0, 0.55, 0.6), D.cheek*0.28);
     col *= 1.0 - 0.15*D.crease;
     col = mix(col, mix(vec3(0.15, 0.04, 0.065), vec3(0.4, 0.13, 0.16), D.mouthT), D.mouth*(1.0 - uSmall*0.3));
@@ -1299,6 +1376,14 @@ vec3 shadeWith(vec3 N, vec3 q, vec3 rd, float sh, float ao, float mat){
     vec3 col = mix(vec3(0.6, 0.04, 0.06), vec3(0.96, 0.2, 0.17), wrap);
     col += vec3(1.0, 0.85, 0.85)*pow(max(dot(R, L), 0.0), 50.0)*0.45*sh + vec3(1.0, 0.6, 0.6)*fres*0.15;
     return col*mix(0.82, 1.0, ao);
+  }
+#endif
+#if PROP == 17 || defined(ALLMATS)
+  if (abs(mat - 55.0) < 0.5 || abs(mat - 56.0) < 0.5) {
+    float wrap = clamp((dot(N, L) + 0.35)/1.35, 0.0, 1.0)*mix(1.0, sh, 0.7);
+    vec3 col = mix(vec3(0.05, 0.045, 0.06), vec3(0.25, 0.22, 0.25), wrap) + vec3(0.06)*uDarkFloor;
+    col += vec3(1.0)*pow(max(dot(N, H), 0.0), 36.0)*0.22*sh + vec3(0.8, 0.8, 0.9)*fres*(0.12 + 0.4*uDarkFloor);
+    return col*mix(0.8, 1.0, ao);
   }
 #endif
   float wrap = clamp((dot(N, L) + 0.4)/1.4, 0.0, 1.0);

@@ -156,6 +156,46 @@ export const ARTIFACTS = {
     ],
   },
 
+  floatcart: {
+    kind: 'Bug found',
+    icon: 'bug',
+    tone: 5,
+    title: 'Why the total ends in …0004',
+    sub: 'Decimal prices added in binary',
+    tabs: [
+      {
+        label: 'The bug',
+        blocks: [
+          {
+            type: 'code',
+            lang: 'js',
+            title: 'Console',
+            text: '0.1 + 0.2\n// 0.30000000000000004\n\n0.1 + 0.2 === 0.3\n// false',
+          },
+          {
+            type: 'note',
+            text: 'Every price is stored in binary, so 0.1 and 0.2 are already a tiny bit off before you add them.',
+          },
+        ],
+      },
+      {
+        label: 'The fix',
+        blocks: [
+          {
+            type: 'code',
+            lang: 'js',
+            title: 'cart.js',
+            text: "const toCents = price => Math.round(price * 100)\n\nfunction cartTotal(items) {\n  const cents = items.reduce((sum, item) => sum + toCents(item.price) * item.qty, 0)\n  return (cents / 100).toFixed(2)\n}\n\ncartTotal([{ price: 0.1, qty: 1 }, { price: 0.2, qty: 1 }])\n// '0.30'",
+          },
+          {
+            type: 'note',
+            text: 'Add whole cents, then turn the total into dollars once, when you show it.',
+          },
+        ],
+      },
+    ],
+  },
+
   launch: {
     kind: 'Drafts',
     icon: 'pencil',

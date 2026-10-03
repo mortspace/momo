@@ -45,6 +45,9 @@ float partD(vec3 q){
   if (uPart == 40) return skipperPart(q, 4);
   if (uPart >= 34 && uPart <= 36) return mirrorPart(q, uPart - 34);
   if (uPart >= 37 && uPart <= 39) return signPart(q, uPart - 37);
+  if (uPart == 41) return antPart(q*vec3(-1.0, 1.0, 1.0));
+  if (uPart == 42) return antPart(q);
+  if (uPart >= 43 && uPart <= 48) return legPart(q);
   return sdCapsule(q, vec3(0.0, -0.03, 0.0), vec3(0.0, 0.06, 0.0), 0.018);
 }
 vec3 partG(vec3 q){

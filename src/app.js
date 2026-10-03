@@ -66,9 +66,10 @@ const RULES = [
     /\b(tests?|testing|unit tests?|e2e|coverage|jest|vitest|pytest|playwright|flaky|qa)\b/i,
   ],
   [
-    'investigate',
-    /\b(bugs?|fail\w*|errors?|why|investigat\w*|broken|crash\w*|debug\w*|issues?|outage)\b/i,
+    'bug',
+    /\b(bugs?|buggy|errors?|exceptions?|crash\w*|debug\w*|broken|stack ?traces?|typeerror|segfault)\b/i,
   ],
+  ['investigate', /\b(fail\w*|why|investigat\w*|issues?|outage)\b/i],
   [
     'captain',
     /\b(git|github|commits?|committ\w*|pull requests?|prs?|merg(e|ed|ing)|releases?|ship (it|this|my|the)|deploy\w*|changelog)\b/i,
@@ -383,6 +384,14 @@ const momo = {
   glassY: 0,
   glassT: 0,
   leaf: 0.5,
+  antSplay: 0,
+  antSplayV: 0,
+  antSway: 0,
+  antSwayV: 0,
+  antTwitch: [0, 0],
+  antTwitchV: [0, 0],
+  legs: [0, 0, 0, 0, 0, 0],
+  legsV: [0, 0, 0, 0, 0, 0],
 }
 const setMood = m => {
   momo.mood = MOODS[m] ? m : 'neutral'
@@ -476,6 +485,14 @@ const EXAMPLES = [
     look: 'investigate',
     mood: 'focused',
     answer: 'charged',
+  },
+  {
+    id: 'ex-bug',
+    title: 'Cart total off by a fraction',
+    q: 'Find the bug: my cart total shows $0.30000000000000004',
+    look: 'bug',
+    mood: 'focused',
+    answer: 'floatcart',
   },
   {
     id: 'ex-builder',
@@ -673,6 +690,7 @@ const OUTFIT_LOOKS = [
   'planner',
   'captain',
   'tester',
+  'bug',
   'guard',
 ]
 function renderOutfits() {
@@ -956,6 +974,10 @@ async function stream(el, text, id, sources) {
 }
 
 const easeSpin = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
+const spinRate = t => (t < 0.5 ? 12 * t * t : 3 * (2 - 2 * t) ** 2)
+const backOut = t => 1 + 2.70158 * (t - 1) ** 3 + 1.70158 * (t - 1) ** 2
+const clamp01 = t => Math.min(1, Math.max(0, t))
+const REVEAL_S = 1.05
 const wearing = () => momo.spin?.queued?.look ?? momo.spin?.next ?? momo.look
 function spinTo(look) {
   return new Promise(resolve => {
@@ -1089,7 +1111,7 @@ function faceStep(want, dt) {
     F.wake = -1
     return
   }
-  if (momo.spin) {
+  if (momo.spin && !momo.spin.landed) {
     if (momo.spin.swapped && F.shown === 2) {
       F.shown = 0
       F.k = 0
@@ -2515,6 +2537,10 @@ function acting(look, t, dt) {
   } else if (look === 'guard') {
     out.eye = [0, 0.01]
     out.roll = Math.sin(u * 1.3) * 0.02
+  } else if (look === 'bug') {
+    const scan = Math.sin(u * 0.75)
+    out.eye = [scan * 0.05, -0.03]
+    out.roll = scan * 0.025
   } else if (look === 'dead') {
     actor.peekIn -= dt
     if (actor.peekIn < 0) {
@@ -2627,20 +2653,37 @@ function frame(now) {
     for (let j = 0; j < 3; j++)
       momo.colors[i][j] += (momo.colorTarget[i][j] - momo.colors[i][j]) * (1 - Math.exp(-dt * 5))
 
-  let spinYaw = 0
+  let spinYaw = 0,
+    spinVel = 0
   if (momo.spin) {
     const s = momo.spin
     s.t += dt / s.dur
     const p = Math.min(1, s.t)
-    spinYaw = easeSpin(p) * Math.PI * 2
+    spinYaw = p < 1 ? easeSpin(p) * Math.PI * 2 : 0
+    spinVel = p < 1 ? (spinRate(p) * Math.PI * 2) / s.dur : 0
     if (!s.swapped && p >= 0.5) {
       s.swapped = true
+      const from = momo.colors
       swapLook(s.next)
+      if (s.next === 'bug') {
+        momo.colors = from
+        momo.liftV += 2.2
+        s.reveal = 0
+      }
     }
-    if (p >= 1) {
-      spinYaw = 0
-      momo.spin = null
+    if (s.reveal != null) s.reveal += dt
+    if (p >= 1 && !s.landed) {
+      s.landed = true
       momo.squashV -= 2.4
+      if (s.reveal != null) {
+        express('surprised', 700)
+        momo.antSplayV += 4
+        for (let i = 0; i < 6; i++) momo.legsV[i] += 2.5
+      }
+    }
+    const revealing = s.reveal != null && s.reveal < REVEAL_S
+    if (p >= 1 && !revealing) {
+      momo.spin = null
       s.resolvers.forEach(f => f())
       const q = s.queued
       if (q && q.look !== momo.look) {
@@ -2766,6 +2809,39 @@ function frame(now) {
           ? Math.max(0, Math.sin(time * 2 * Math.PI * 2.6)) * 0.08
           : 0)
   if (dead && !reduce && Math.random() < dt * 0.25) momo.tipV[0] += 1.4
+  const reveal = momo.spin?.reveal
+  const bugGrow = reveal == null ? 1 : clamp01((reveal - 0.08) / 0.8)
+  const antGrow = reveal == null ? 1 : backOut(clamp01((reveal - 0.3) / 0.34))
+  const bodySquash = momo.squash + breathe + act.squash + momo.exprSq
+  ;[momo.antSplay, momo.antSplayV] = spring(
+    momo.antSplay,
+    momo.antSplayV,
+    Math.min(0.32, spinVel * 0.02) + Math.min(1, momo.dead) * 0.6 + bodySquash * 0.25,
+    220,
+    4.5,
+    dt,
+  )
+  ;[momo.antSway, momo.antSwayV] = spring(momo.antSway, momo.antSwayV, momo.rollV * 0.25, 90, 6, dt)
+  for (let i = 0; i < 2; i++)
+    [momo.antTwitch[i], momo.antTwitchV[i]] = spring(
+      momo.antTwitch[i],
+      momo.antTwitchV[i],
+      0,
+      260,
+      8,
+      dt,
+    )
+  if (momo.look === 'bug' && !reduce && !momo.spin && !dead && Math.random() < dt * 0.4) {
+    const side = Math.random() < 0.5 ? 0 : 1
+    momo.antTwitchV[side] += 4.5
+    if (Math.random() < 0.3) momo.antTwitchV[1 - side] += 3.5
+  }
+  for (let i = 0; i < 6; i++) {
+    const curl = dead ? 0.7 + Math.sin(time * 6 + i * 1.7) * 0.06 : 0
+    ;[momo.legs[i], momo.legsV[i]] = spring(momo.legs[i], momo.legsV[i], curl, 320, 16, dt)
+  }
+  if (momo.look === 'bug' && !reduce && !momo.spin && !dead && Math.random() < dt * 0.5)
+    momo.legsV[Math.floor(Math.random() * 6)] += 7
   const need = Math.max(T.w, rect.w) * DPR * quality
   if (!heroPx || heroPx < need * 0.98 || heroPx > need * 1.6)
     heroPx = Math.max(48, Math.min(1000, Math.round(need)))
@@ -2792,7 +2868,15 @@ function frame(now) {
     colors: momo.colors,
     yaw: spinYaw + momo.yaw,
     roll: momo.roll,
-    squash: momo.squash + breathe + act.squash + momo.exprSq,
+    squash: bodySquash,
+    bug: bugGrow,
+    legL: momo.legs.slice(0, 3),
+    legR: momo.legs.slice(3),
+    ant: [
+      antGrow,
+      momo.antSplay + momo.antSway + momo.antTwitch[0],
+      -momo.antSplay + momo.antSway - momo.antTwitch[1],
+    ],
     dead: Math.min(1, momo.dead),
     blink: Math.max(dead ? 0 : momo.blink, face.close),
     look: dead ? [0, 0] : [momo.eye[0], momo.eye[1] + FL.lift],

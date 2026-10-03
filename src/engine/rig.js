@@ -3,6 +3,52 @@ export const TIP_A = [0, 0.02, 0]
 export const TIP_B0 = [0.24, 0.98, -0.04]
 export const LIGHT = norm3([-0.55, 0.78, 0.6])
 export const CAM = { ro: [0, 0.32, 7.6], ta: [0, 0.12, 0], focal: 2.55 }
+export const ANTENNA = {
+  roots: [
+    [-0.135, 0.52, 0.397],
+    [0.25, 0.52, 0.34],
+  ],
+  stalk: Array.from({ length: 7 }, (_, i) => {
+    const t = i / 6,
+      b = 2 * t * (1 - t),
+      c = t * t
+    return [b * 0.01 + c * 0.2, b * 0.25 + c * 0.36, b * 0.06 + c * 0.085, 0.027 - 0.009 * t]
+  }),
+  ball: [0.2, 0.36, 0.085, 0.066],
+}
+export const BUG_SPOTS = [
+  [-0.503, 0.323, 0.507, 0.15],
+  [0.582, 0.289, 0.47, 0.15],
+  [-0.88, -0.363, 0.342, 0.18],
+  [0.902, -0.341, 0.307, 0.18],
+  [0.06, 0.601, -0.334, 0.16],
+  [-0.467, 0.012, -0.753, 0.17],
+  [0.554, 0.002, -0.705, 0.17],
+]
+export const BUG_SEAM = { x: 0.06, w: 0.014, front: [-0.02, -0.15] }
+export const BUG_LEG = {
+  hip: 0.036,
+  knee: [0.17, 0.08, 0, 0.032],
+  ankle: [0.33, -0.125, 0, 0.028],
+  foot: [0.345, -0.136, 0, 0.044],
+}
+export const BUG_LEGS = [-45, -92, -138, 45, 92, 138].map((deg, i) => {
+  const a = (deg * Math.PI) / 180
+  return {
+    root: [0.58 * Math.sin(a), -0.74, 0.53 * Math.cos(a)],
+    x: [Math.sin(a), 0, Math.cos(a)],
+    z: [-Math.cos(a), 0, Math.sin(a)],
+    k: [1, 3, 5, 0, 2, 4][i],
+  }
+})
+export const LEG_GROW = { at: 0.3, step: 0.04, len: 0.3 }
+export function legGrow(bug, k) {
+  const t = Math.min(1, Math.max(0, (bug - LEG_GROW.at - k * LEG_GROW.step) / LEG_GROW.len)) - 1
+  return 1 + 2.70158 * t * t * t + 1.70158 * t * t
+}
+export const partHidden = (part, u) =>
+  (part.mat === 55 && u.uAnt[0] < 0.02) ||
+  (part.mat === 56 && legGrow(u.uBug, BUG_LEGS[+part.frame.slice(3)].k) < 0.02)
 
 export function norm3(v) {
   const l = Math.hypot(v[0], v[1], v[2]) || 1
@@ -204,6 +250,19 @@ export function partFrame(frame, s, u) {
       M4.plane(0, 1, -((WEAR_TILT[s.outfit] || 0) + u.uHatTilt * 0.6)),
     )
   }
+  if (frame === 'antL' || frame === 'antR') {
+    const i = frame === 'antL' ? 0 : 1,
+      r = ANTENNA.roots[i],
+      g = Math.max(u.uAnt[0], 1e-3)
+    return M4.chain(M4.tr(r[0], r[1], r[2]), M4.plane(0, 1, -u.uAnt[1 + i]), M4.sc(g, g, g))
+  }
+  if (frame.startsWith('leg')) {
+    const i = +frame.slice(3),
+      L = BUG_LEGS[i],
+      g = Math.max(legGrow(u.uBug, L.k), 1e-3),
+      lift = (i < 3 ? u.uLegL : u.uLegR)[i % 3]
+    return M4.chain(M4.basis(L.x, [0, 1, 0], L.z, L.root), M4.plane(0, 1, -lift), M4.sc(g, g, g))
+  }
   if (frame === 'glasses') return M4.tr(0, -u.uGlassY, 0)
   if (frame === 'snout')
     return M4.chain(
@@ -329,6 +388,7 @@ export const OUTFIT_OF_VARIANT = {
   14: 15,
   15: 16,
   16: 17,
+  17: 18,
 }
 export const NV = Math.max(...Object.keys(OUTFIT_OF_VARIANT).map(Number))
 export const WEAR_TILT = {
@@ -341,6 +401,7 @@ export const WEAR_TILT = {
   15: 0.06,
   16: 0,
   17: 0,
+  18: 0,
 }
 
 export const PARTS = [
@@ -737,5 +798,35 @@ export const PARTS = [
     hi: [1.03, 1.38, -0.39],
     h: 0.004,
   },
+  {
+    name: 'antL',
+    part: 41,
+    mat: 55,
+    v: 17,
+    frame: 'antL',
+    lo: [-0.29, -0.06, -0.06],
+    hi: [0.06, 0.45, 0.18],
+    h: 0.0032,
+  },
+  {
+    name: 'antR',
+    part: 42,
+    mat: 55,
+    v: 17,
+    frame: 'antR',
+    lo: [-0.06, -0.06, -0.06],
+    hi: [0.29, 0.45, 0.18],
+    h: 0.0032,
+  },
+  ...[0, 1, 2, 3, 4, 5].map(i => ({
+    name: 'leg' + i,
+    part: 43 + i,
+    mat: 56,
+    v: 17,
+    frame: 'leg' + i,
+    lo: [-0.05, -0.2, -0.06],
+    hi: [0.41, 0.13, 0.06],
+    h: 0.0035,
+  })),
 ]
 export const BODY_BOUNDS = { lo: [-1.04, -0.98, -0.96], hi: [1.04, 1.12, 0.96] }

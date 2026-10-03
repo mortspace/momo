@@ -11,9 +11,9 @@ A little 3D friend for your AI chats. It dresses for whatever you ask.
 
 **Try it live at [feralui.dev/momo](https://feralui.dev/momo).** The live demo runs without keys, on the local rules and written replies.
 
-Ask for a recipe and Momo puts on a chef's hat. Paste an error and out comes the monocle. Lose the connection and it plays dead until you're back.
+Ask for a recipe and Momo puts on a chef's hat. Paste an error and it turns into a ladybug. Lose the connection and it plays dead until you're back.
 
-- **16 outfits.** Each one has its own prop, colour and face, picked from what you ask.
+- **17 outfits.** Each one has its own prop, colour and face, picked from what you ask.
 - **Runs on any device.** Real 3D on a GPU, lighter meshes on software WebGL, and a Canvas 2D renderer when there is no WebGL at all. Momo is never swapped for a still image.
 - **Answers come with cards.** A budget split you can drag, a playlist that plays previews, a packing list you tick off, a storyboard, a workout plan and more. The sidebar has an example chat for each one.
 - **Works with no keys.** Out of the box it answers from local rules and a set of written replies. Add a free Gemini key for real answers.
@@ -50,14 +50,15 @@ By default, keyword rules pick the outfit. For better picks, Momo can ask [Jev](
 
 ## Outfits
 
-| Coding                         | Everyday                                |
-| ------------------------------ | --------------------------------------- |
-| Builder, apps and sites        | Chef, recipes and meals                 |
-| Captain, git and releases      | Writer, posts and emails                |
-| Tester, runs the tests         | Tutor, explains things                  |
-| Guard, asks before risky steps | Planner, plans and bookings             |
-| Detective, bugs and errors     | Traveller, trips                        |
-| Designer, UI and type          | Music, Coach, Money, Gardener, Director |
+| Coding                         | Everyday                    |
+| ------------------------------ | --------------------------- |
+| Builder, apps and sites        | Chef, recipes and meals     |
+| Captain, git and releases      | Writer, posts and emails    |
+| Tester, runs the tests         | Tutor, explains things      |
+| Bug finder, bugs and errors    | Planner, plans and bookings |
+| Guard, asks before risky steps | Traveller, trips            |
+| Detective, finds out why       | Music, Coach, Money         |
+| Designer, UI and type          | Gardener, Director          |
 
 You can also make your own bot. Give it a name and a job, and Momo picks the outfit that fits.
 

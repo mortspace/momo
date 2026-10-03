@@ -14,6 +14,9 @@ import {
   TIP_A,
   TIP_B0,
   NV,
+  BUG_SPOTS,
+  BUG_SEAM,
+  partHidden,
 } from './rig.js'
 
 export { PALETTES, OUTFITS, FACE, hexToRgb }
@@ -443,6 +446,22 @@ function propColors(mat, N, V, q, u, lp) {
       ),
     ]
   }
+  if (mat === 55 || mat === 56)
+    return [
+      add3(
+        add3(
+          add3(
+            mix3([0.05, 0.045, 0.06], [0.25, 0.22, 0.25], wrapOf(nl, 0.35)),
+            [1, 1, 1],
+            0.06 * u.uDarkFloor,
+          ),
+          [1, 1, 1],
+          Math.pow(nh, 36) * 0.22,
+        ),
+        [0.8, 0.8, 0.9],
+        fres * (0.12 + 0.4 * u.uDarkFloor),
+      ),
+    ]
   if (mat === 53)
     return [
       add3(
@@ -457,6 +476,7 @@ function propColors(mat, N, V, q, u, lp) {
     ]
   return [mix3([0.82, 0.42, 0.52], [1, 0.72, 0.78], wrapOf(nl, 0.4))]
 }
+const SATIN = [1, 0.93, 0.9]
 const PAT = [0, 1],
   pat = (a, b) => {
     PAT[0] = a
@@ -1315,6 +1335,48 @@ export function createRenderer(opts = {}) {
     out[o + 2] = cz / cw
   }
   const fcol = [0, 0, 0]
+  const spotR = new Float32Array(BUG_SPOTS.length)
+  let spotAA = 0.01
+  function setSpots(bug, pixW) {
+    spotAA = Math.max(0.004, pixW * 0.75)
+    for (let i = 0; i < BUG_SPOTS.length; i++) {
+      const k = clamp((bug - i * 0.07) / 0.3, 0, 1) - 1
+      const g = 1 + 2.70158 * k * k * k + 1.70158 * k * k
+      spotR[i] = g > 0 ? BUG_SPOTS[i][3] * g : -1
+    }
+    seamOn = clamp(bug * 1.6 - 0.6, 0, 1)
+  }
+  let seamOn = 0
+  function spotAt(x, y, z) {
+    let c = 0
+    for (let i = 0; i < BUG_SPOTS.length; i++) {
+      const r = spotR[i]
+      if (r < 0) continue
+      const S = BUG_SPOTS[i]
+      const d = Math.hypot(x - S[0], y - S[1], z - S[2]) - r
+      if (d < spotAA) {
+        const g = r / S[3]
+        c = Math.max(c, (1 - smooth(-spotAA, spotAA, d)) * smooth(0, 0.12, g))
+      }
+    }
+    if (seamOn > 0 && z < BUG_SEAM.front[0])
+      c = Math.max(
+        c,
+        (1 - smooth(BUG_SEAM.w - spotAA, BUG_SEAM.w + spotAA, Math.abs(x - BUG_SEAM.x))) *
+          smooth(-BUG_SEAM.front[0], -BUG_SEAM.front[1], -z) *
+          smooth(-0.7, -0.45, y) *
+          seamOn,
+      )
+    return c
+  }
+  function nearSpot(x, y, z) {
+    if (seamOn > 0 && z < BUG_SEAM.front[0] + 0.02 && Math.abs(x - BUG_SEAM.x) < 0.08) return true
+    for (let i = 0; i < BUG_SPOTS.length; i++) {
+      const S = BUG_SPOTS[i]
+      if (spotR[i] > 0 && Math.hypot(x - S[0], y - S[1], z - S[2]) < spotR[i] + 0.09) return true
+    }
+    return false
+  }
   function sampleFace(qx, qy) {
     const fb = faceBox
     const fx = (qx - fb.x0) * fb.s - 0.5,
@@ -1426,15 +1488,27 @@ export function createRenderer(opts = {}) {
           const o = row + px
           if (z < depth[o]) {
             depth[o] = z
-            const fa = face && qz > 0 ? sampleFace(qx, qy) : 0
+            let cr = r,
+              cg = g,
+              cb = b
+            if (face & 2) {
+              const sp = spotAt(qx, qy, qz)
+              if (sp > 0) {
+                const lum = 0.3 * r + 0.59 * g + 0.11 * b
+                cr += (10 + 0.24 * lum - cr) * sp
+                cg += (9 + 0.21 * lum - cg) * sp
+                cb += (11 + 0.23 * lum - cb) * sp
+              }
+            }
+            const fa = face & 1 && qz > 0 ? sampleFace(qx, qy) : 0
             buf32[o] =
               fa > 0
                 ? pack(
-                    (r + (fcol[0] - r) * fa) | 0,
-                    (g + (fcol[1] - g) * fa) | 0,
-                    (b + (fcol[2] - b) * fa) | 0,
+                    (cr + (fcol[0] - cr) * fa) | 0,
+                    (cg + (fcol[1] - cg) * fa) | 0,
+                    (cb + (fcol[2] - cb) * fa) | 0,
                   )
-                : pack(r | 0, g | 0, b | 0)
+                : pack(cr | 0, cg | 0, cb | 0)
           }
         }
         w0 += a0x
@@ -1721,7 +1795,8 @@ export function createRenderer(opts = {}) {
       col = [0, 0, 0]
     const sheen = 0.3,
       sPow = 10,
-      sAmt = 0.05
+      sAmt = 0.05,
+      shell = s.outfit === 18
     const mvp = M4.mul(vp, model)
     for (let i = 0; i < n; i++) {
       const x = P[i * 3],
@@ -1769,14 +1844,17 @@ export function createRenderer(opts = {}) {
         hy = L[1] + vy,
         hz = L[2] + vz
       const hl = Math.hypot(hx, hy, hz)
-      const spec = Math.pow(Math.max((nx * hx + ny * hy + nz * hz) / hl, 0), sPow) * sAmt * sh
+      const nh = Math.max((nx * hx + ny * hy + nz * hz) / hl, 0)
+      const spec = Math.pow(nh, sPow) * sAmt * sh
+      const satin = shell ? Math.pow(nh, 22) * 0.16 * sh : 0
       for (let k = 0; k < 3; k++)
         vc[i * 3 + k] =
           col[k] * aoK +
           u.cBase[k] * 0.12 * nf +
           u.cLight[k] * 0.18 * under +
           mix(u.cLight[k], 1, 0.3) * fres +
-          spec
+          spec +
+          satin * SATIN[k]
       if (u.uGlow > 0) {
         const te = u.uTipEnd,
           gd = Math.hypot(x - te[0], y - te[1], z - te[2]),
@@ -1821,6 +1899,13 @@ export function createRenderer(opts = {}) {
         break
       }
     const idx = M.body.idx
+    const bug = s.outfit === 18
+    let near = null
+    if (bug) {
+      setSpots(u.uBug, u.uPixW)
+      near = arr('near', n)
+      for (let i = 0; i < n; i++) near[i] = nearSpot(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]) ? 1 : 0
+    }
     for (let t = 0; t < idx.length; t += 3) {
       const a = idx[t],
         b = idx[t + 1],
@@ -1831,7 +1916,8 @@ export function createRenderer(opts = {}) {
         P[a * 3] < fx1 + 0.1 &&
         P[a * 3 + 1] > fy0 - 0.1 &&
         P[a * 3 + 1] < fy1 + 0.1
-      raster(sx, sy, sz, vc, P, a, b, c, face && faceBox.any)
+      const spots = bug && (near[a] || near[b] || near[c]) ? 2 : 0
+      raster(sx, sy, sz, vc, P, a, b, c, (face && faceBox.any ? 1 : 0) | spots)
     }
     const v = variantOf(s.outfit)
     const parts = v > 0 ? mesh.props[v] : null
@@ -1843,8 +1929,9 @@ export function createRenderer(opts = {}) {
         lp = [0, 0, 0]
       for (const part of parts) {
         if ((part.small && !small) || (part.big && small)) continue
+        if (partHidden(part, u)) continue
         const A = partFrame(part.frame, s, u),
-          WA = M4.mul(part.mat === 23 || part.mat === 43 ? model : Wm, A),
+          WA = M4.mul(part.mat === 23 || part.mat === 43 || part.mat >= 55 ? model : Wm, A),
           NM = M4.normal(WA),
           pvp = M4.mul(vp, WA)
         const localQ = LOCAL_Q.has(part.mat)

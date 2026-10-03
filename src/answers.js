@@ -181,14 +181,27 @@ export const ANSWERS = {
       },
     ],
   },
+  floatcart: {
+    look: 'bug',
+    q: 'Find the bug: my cart total shows $0.30000000000000004',
+    keys: /0\.30{5,}4|0\.1 ?\+ ?0\.2|\bfloating.point\b/i,
+    text: 'Found it. JavaScript stores every number in binary,[1] and in binary 0.1 and 0.2 are fractions that repeat forever, the way 1/3 does in decimal.[2] They get rounded to fit, so adding them gives 0.30000000000000004 instead of 0.3. Your cart adds prices like these, and that tiny leftover lands in the total.\n\nThe fix is to keep money in **whole cents**. Store 10 and 20, add them to get 30, and turn it back into dollars only when you show it. If prices arrive as decimals, convert each one once with Math.round(price * 100) before adding.\n\nRounding only the final total hides the leftover on screen, but checks like total === 0.3 still fail.',
+    sources: [
+      {
+        title: 'MDN: Number',
+        url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number',
+      },
+      { title: 'Floating Point Math', url: 'https://0.30000000000000004.com/' },
+    ],
+  },
   cors: {
-    look: 'investigate',
+    look: 'bug',
     q: 'Why am I getting a CORS error?',
     keys: /\bcors\b/i,
     text: 'A CORS error means the browser blocked your page from reading a response from another site, because that server didn’t say your site is allowed. The fix belongs on the server: send an Access-Control-Allow-Origin header that names your site. Or call the API from your own backend, where CORS doesn’t apply.',
   },
   notfound: {
-    look: 'investigate',
+    look: 'bug',
     q: 'Why do I get a 404 error?',
     keys: /\b404\b|\bpage not found\b/i,
     text: 'A 404 means the server was reached but has nothing at that address. Usually the link has a typo, the page was moved or deleted, or the capital letters don’t match. If it’s your own site, check the file path and any redirect rules, then reload without the cache.',
@@ -200,7 +213,7 @@ export const ANSWERS = {
     text: 'Run a speed test next to the router, then in the room where it’s slow. If it’s only slow far away, the Wi-Fi signal is the problem, so move the router higher and into the open. If it’s slow everywhere, restart the router, and if that doesn’t help, ask your provider whether there’s an outage.',
   },
   crash: {
-    look: 'investigate',
+    look: 'bug',
     q: 'Why does my app keep crashing?',
     keys: /\b(app|phone|program|game|laptop)\b.*\bcrash\w*|\bcrash\w*\b.*\b(app|program|game)\b/i,
     text: 'First make the crash happen on purpose and note exactly what you did just before it closed. Update the app and your phone or computer, then restart. If it still crashes, reinstall the app; if it only fails on one screen, that detail is what to send the developer.',

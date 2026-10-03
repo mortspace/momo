@@ -35,6 +35,7 @@ import {
   PARTS,
   OUTFIT_OF_VARIANT,
   NV,
+  partHidden,
 } from './rig.js'
 const VARS = Array.from({ length: NV }, (_, i) => i + 1)
 
@@ -234,6 +235,7 @@ const PROP_VOL_FRAME = {
   14: 'wear',
   15: 'wear',
   16: 'wear',
+  17: 'wear',
 }
 
 function propVolBounds(v) {
@@ -818,7 +820,7 @@ export function createRenderer(opts = {}) {
       k = 1,
       W = bodyModel
     if (props) {
-      pv = v === 2 || v === 6 ? null : propVolume(v)
+      pv = v === 2 || v === 6 || v === 17 ? null : propVolume(v)
       W = s.outfit === 8 ? bodyModel : fallWorld(s, u, T)
       const frame = PROP_VOL_FRAME[v]
       let A = M4.id()
@@ -878,8 +880,9 @@ export function createRenderer(opts = {}) {
       gl.uniform1i(Q.U.uLit, 1)
       for (const part of props) {
         if ((part.small && !u.uSmall) || (part.big && u.uSmall)) continue
+        if (partHidden(part, u)) continue
         const A = partFrame(part.frame, s, u)
-        const Wp = part.mat === 23 || part.mat === 43 ? bodyModel : W
+        const Wp = part.mat === 23 || part.mat === 43 || part.mat >= 55 ? bodyModel : W
         setUniforms(gl, Q.U, {
           uVP: cam.vp,
           uModel: Wp,
@@ -1088,7 +1091,7 @@ export function createRenderer(opts = {}) {
     u.uTipEnd = tipEnd(u.uTip)
     bodyVolume(s, u)
     const v = variantOf(s.outfit)
-    if (v > 0 && v !== 2 && v !== 6 && propsReady()) propVolume(v)
+    if (v > 0 && v !== 2 && v !== 6 && v !== 17 && propsReady()) propVolume(v)
   }
 
   setup()

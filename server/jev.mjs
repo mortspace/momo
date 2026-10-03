@@ -4,8 +4,9 @@ const JEV_URL = process.env.JEV_URL || 'https://api.typesafe.ai/v1/systemone'
 
 export const LOOKS = {
   cook: 'Food and cooking: recipes, meals, ingredients, groceries',
+  bug: 'Bugs in code or apps: errors, crashes',
   investigate:
-    'Fixing something broken: bugs, errors, crashes, outages, failed payments. Not for curious why-questions',
+    'Why something broke, not code bugs or curious why-questions: outages, failed payments, slow internet',
   write: 'Writing or editing text: posts, emails, messages, bios, copy',
   builder:
     'Making something new: code, apps, websites, landing pages, prototypes. Not for fixing bugs',

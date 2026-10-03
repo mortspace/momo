@@ -17,6 +17,7 @@ export const PALETTES = {
   piggy: ['#FFE0E6', '#FBB9C6', '#F095AA', '#D2728A'],
   lime: ['#E9F5B5', '#C9E26C', '#ABC64C', '#88A038'],
   indigo: ['#D6D8FA', '#A0A5F0', '#8086DC', '#6268BA'],
+  ladybug: ['#FFC4BC', '#F57A6C', '#E05A4E', '#B8423B'],
 }
 
 export const OUTFITS = {
@@ -38,6 +39,7 @@ export const OUTFITS = {
   captain: 15,
   tester: 16,
   guard: 17,
+  bug: 18,
 }
 export const FACE = {
   rest: 0,
@@ -58,6 +60,7 @@ export const FACE = {
   captain: 0,
   tester: 0,
   guard: 0,
+  bug: 0,
 }
 
 const hex3 = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255)
@@ -161,6 +164,7 @@ const RIG = {
     15: [0.02, 0.16, 1.24],
     16: [0.0, 0.14, 1.0],
     17: [0.0, 0.0, 1.0],
+    18: [0.0, 0.0, 1.0],
   },
 }
 
@@ -193,6 +197,7 @@ export const VARIANT = {
   15: 14,
   16: 15,
   17: 16,
+  18: 17,
 }
 export const variantOf = outfit => VARIANT[outfit] || 0
 
@@ -286,6 +291,10 @@ export function uniformsFor(state, px) {
     uSleepy: s.sleepy || 0,
     uWink: s.wink || 0,
     uDarkFloor: s.darkFloor || 0,
+    uBug: s.bug ?? 1,
+    uAnt: s.ant || [1, 0, 0],
+    uLegL: s.legL || [0, 0, 0],
+    uLegR: s.legR || [0, 0, 0],
     uYaw: s.yaw,
     uSquash: s.squash,
     uBlink: s.blink,

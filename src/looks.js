@@ -16,6 +16,7 @@ export const LOOK_PALETTE = {
   captain: 'lemon',
   tester: 'indigo',
   guard: 'lime',
+  bug: 'ladybug',
 }
 
 export const ROLE = {
@@ -35,6 +36,7 @@ export const ROLE = {
   captain: 'Captain',
   tester: 'Tester',
   guard: 'Guard',
+  bug: 'Bug finder',
 }
 
 export const JOB = {
@@ -43,7 +45,8 @@ export const JOB = {
   captain: 'Git and releases',
   tester: 'Runs the tests',
   guard: 'Asks before risky steps',
-  investigate: 'Bugs and errors',
+  bug: 'Bugs and errors',
+  investigate: 'Finds out why',
   designer: 'UI and type',
   cook: 'Recipes and meals',
   write: 'Posts and emails',
@@ -58,7 +61,7 @@ export const JOB = {
 }
 
 export const BOT_GROUPS = [
-  ['Coding', ['builder', 'captain', 'tester', 'guard', 'investigate', 'designer']],
+  ['Coding', ['builder', 'captain', 'tester', 'bug', 'guard', 'investigate', 'designer']],
   [
     'Everyday',
     [
@@ -99,5 +102,6 @@ export const SIGNATURE = {
   captain: { brows: [0.014, 0.016, 0.016, 0.014], look: [0.01, 0.0], tip: [-0.2, 0, 0.62] },
   tester: { brows: [0.008, 0.01, 0.022, 0.026], look: [0.0, -0.005], roll: 0.02 },
   guard: { brows: [0.02, 0.022, 0.012, 0.01], look: [0.0, 0.0] },
+  bug: { brows: [0.016, 0.018, 0.018, 0.016], look: [0.0, 0.0], tip: [-0.2, 0, 0.62] },
   dead: {},
 }

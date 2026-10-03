@@ -52,6 +52,14 @@ const SIMPLIFY_ERR = {
   signPole: 0.0004,
   signPlate: 0.0004,
   signMark: 0.0003,
+  antL: 0.0003,
+  antR: 0.0003,
+  leg0: 0.0004,
+  leg1: 0.0004,
+  leg2: 0.0004,
+  leg3: 0.0004,
+  leg4: 0.0004,
+  leg5: 0.0004,
 }
 const LOD_ERR = +(process.env.LOD_ERR || 0.01)
 const LOD_BODY = +(process.env.LOD_BODY || 0.2),
